@@ -3,125 +3,55 @@ import streamlit as st
 import pandas as pd
 import joblib
 from pathlib import Path
+from datetime import datetime
 
-# =====================================================
-# PAGE CONFIGURATION
-# =====================================================
+# ==========================================
+# 1. PAGE CONFIGURATION
+# ==========================================
 
 st.set_page_config(
-    page_title="Food Waste AI Management",
-    page_icon="🍃",
+    page_title="FoodWise AI",
+    page_icon="🌍",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
+# ==========================================
+# 2. LOAD EXISTING MODEL
+# ==========================================
+
 MODEL_PATH = Path(__file__).parent / "model_food_waste.pkl"
 
-# =====================================================
-# CUSTOM DASHBOARD THEME
-# =====================================================
-
-
-st.markdown("""
-<style>
-
-.stApp {
-    background-color: #F4F2FA;
-    color: #24213D;
-}
-
-[data-testid="stSidebar"] {
-    background-color: #17152F;
-}
-
-[data-testid="stSidebar"] * {
-    color: #FFFFFF !important;
-}
-
-.block-container {
-    padding-top: 2rem;
-    padding-bottom: 3rem;
-}
-
-.hero {
-    padding: 38px;
-    border-radius: 20px;
-    background: linear-gradient(120deg, #17152F, #7047D7);
-    color: white;
-    margin-bottom: 25px;
-}
-
-.hero h1 {
-    color: white;
-    font-size: 36px;
-}
-
-.hero p {
-    color: #EAE5FF;
-    font-size: 17px;
-}
-
-div[data-testid="stMetric"] {
-    background-color: #FFFFFF;
-    border: 1px solid #E4DDF7;
-    padding: 20px;
-    border-radius: 16px;
-    box-shadow: 0 4px 14px rgba(40, 30, 80, 0.06);
-}
-
-.stButton button,
-.stFormSubmitButton button {
-    background-color: #7047D7;
-    color: white;
-    border-radius: 10px;
-    border: none;
-    font-weight: 600;
-}
-
-.stButton button:hover,
-.stFormSubmitButton button:hover {
-    background-color: #5631B5;
-    color: white;
-    border: none;
-}
-
-h1, h2, h3 {
-    color: #30205E;
-}
-
-div[data-testid="stAlert"] {
-    border-radius: 12px;
-}
-
-</style>
-""", unsafe_allow_html=True)
-
-
-# =====================================================
-# LOAD PRETRAINED MACHINE LEARNING MODEL
-# =====================================================
-
 @st.cache_resource
-def load_model():
-    return joblib.load(MODEL_PATH)
+def load_model(path):
+    return joblib.load(path)
 
-
-if not MODEL_PATH.exists():
-    st.error("model_food_waste.pkl file not found.")
-    st.stop()
+model = None
+model_error = None
 
 try:
-    model = load_model()
+    if MODEL_PATH.exists():
+        model = load_model(str(MODEL_PATH))
+    else:
+        model_error = "model_food_waste.pkl was not found."
 except Exception as e:
-    st.error(f"Model loading error: {e}")
-    st.stop()
+    model_error = str(e)
 
+# ==========================================
+# 3. MODEL FEATURES
+# ==========================================
 
-# =====================================================
-# MODEL FEATURES AND SECTOR ENCODING
-# =====================================================
+SECTOR_MAPPING = {
+    "Catering": 0,
+    "Hospital": 1,
+    "Household": 2,
+    "Hotel": 3,
+    "Restaurant": 4,
+    "School": 5,
+    "Supermarket": 6
+}
 
-features = [
+FEATURES = [
     "sector_enc",
     "month",
     "is_ramadan",
@@ -144,272 +74,390 @@ features = [
     "composting_avail"
 ]
 
-sector_encoding = {
-    "Catering": 0,
-    "Hospital": 1,
-    "Household": 2,
-    "Hotel": 3,
-    "Restaurant": 4,
-    "School": 5,
-    "Supermarket": 6
+# ==========================================
+# 4. SESSION STATE
+# ==========================================
+
+if "prediction" not in st.session_state:
+    st.session_state.prediction = None
+
+if "prediction_sector" not in st.session_state:
+    st.session_state.prediction_sector = None
+
+if "prediction_inputs" not in st.session_state:
+    st.session_state.prediction_inputs = None
+
+# ==========================================
+# 5. CUSTOM CSS
+# ==========================================
+
+st.markdown("""
+<style>
+.stApp {
+    background-color: #0B1020;
+    color: #F8FAFC;
 }
 
-expected_features = getattr(model, "feature_names_in_", None)
+[data-testid="stSidebar"] {
+    background-color: #151B35;
+    border-right: 1px solid #34466D;
+}
 
-if expected_features is not None:
-    if list(expected_features) != features:
-        st.error("Model feature names or order do not match the application.")
-        st.stop()
+[data-testid="stSidebar"] * {
+    color: #F1F5F9;
+}
+
+.block-container {
+    max-width: 1400px;
+    padding-top: 2rem;
+    padding-bottom: 3rem;
+}
+
+.hero {
+    background: linear-gradient(120deg, #202B58, #5635A8, #087E9B);
+    padding: 32px;
+    border-radius: 20px;
+    margin-bottom: 25px;
+    border: 1px solid #5264A0;
+}
+
+.hero h1 {
+    color: white !important;
+    font-size: 34px;
+    font-weight: 800;
+}
+
+.hero p {
+    color: #E0E7FF;
+    font-size: 16px;
+}
+
+.info-card {
+    background: #17213B;
+    border: 1px solid #34466D;
+    padding: 20px;
+    border-radius: 15px;
+    margin-bottom: 15px;
+}
+
+.info-card h3 {
+    color: #A5B4FC !important;
+}
+
+.info-card p {
+    color: #CBD5E1;
+}
+
+div[data-testid="stMetric"] {
+    background: #182342;
+    border: 1px solid #34466D;
+    padding: 18px;
+    border-radius: 15px;
+}
+
+div[data-testid="stMetricLabel"] {
+    color: #A5B4FC;
+}
+
+div[data-testid="stMetricValue"] {
+    color: white;
+}
+
+.stButton button,
+.stFormSubmitButton button {
+    background: linear-gradient(90deg, #7047D7, #347FCE);
+    color: white;
+    border: none;
+    border-radius: 10px;
+    font-weight: 700;
+}
+
+.stButton button:hover,
+.stFormSubmitButton button:hover {
+    background: #5631B5;
+    color: white;
+}
+
+h1, h2, h3 {
+    color: #C4B5FD;
+}
+
+hr {
+    border-color: #34466D;
+}
+</style>
+""", unsafe_allow_html=True)
+
+# ==========================================
+# 6. REUSABLE FUNCTIONS
+# ==========================================
+
+def show_hero(title, subtitle):
+    st.markdown(
+        f"""
+        <div class="hero">
+            <h1>{title}</h1>
+            <p>{subtitle}</p>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 
 
-# =====================================================
-# SIDEBAR NAVIGATION
-# =====================================================
-
-st.sidebar.title("🍃 FOOD WASTE AI")
-st.sidebar.caption("Smart Food Management System")
-
-page = st.sidebar.radio(
-    "MAIN MENU",
-    [
-        "Home Dashboard",
-        "Food Waste Prediction",
-        "Smart Donation",
-        "Analytics & Insights",
-        "Waste Reduction Tips"
-    ]
-)
-
-st.sidebar.divider()
-
-st.sidebar.markdown("### SYSTEM INFORMATION")
-st.sidebar.success("ML Model Loaded")
-st.sidebar.caption("Model: Food Waste Regression")
-st.sidebar.caption("Framework: Scikit-learn")
-st.sidebar.caption("Interface: Streamlit")
-
-st.sidebar.divider()
-
-st.sidebar.caption("AI Food Waste Management System")
+def show_card(title, description):
+    st.markdown(
+        f"""
+        <div class="info-card">
+            <h3>{title}</h3>
+            <p>{description}</p>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 
 
-# =====================================================
-# HOME DASHBOARD
-# =====================================================
+# ==========================================
+# 7. SIDEBAR NAVIGATION
+# ==========================================
 
-if page == "Home Dashboard":
+with st.sidebar:
+    st.title("🌍 FOODWISE AI")
+    st.caption("SMART FOOD SECURITY PLATFORM")
+    st.divider()
 
-    st.markdown("""
-    <div class="hero">
-        <h1>🍽️ AI Food Waste Management</h1>
-        <p>
-        Intelligent food waste prediction, smart donation
-        recommendations and sustainable food management.
-        </p>
-    </div>
-    """, unsafe_allow_html=True)
-
-    st.subheader("System Overview")
-
-    c1, c2, c3 = st.columns(3)
-
-    c1.metric("ML Model", "Active", "Loaded")
-    c2.metric("Prediction Type", "Regression")
-    c3.metric("Model Features", "20")
+    page = st.radio(
+        "MAIN MENU",
+        [
+            "Home Dashboard",
+            "Food Waste Prediction",
+            "Smart Donation",
+            "Analytics & Insights",
+            "Waste Reduction Tips",
+            "ML Model Information"
+        ]
+    )
 
     st.divider()
 
-    st.subheader("Explore Dashboard")
+    if model is not None:
+        st.success("Model Connected")
+    else:
+        st.error("Model Not Connected")
+
+    st.caption("Version 2.1")
+
+# ==========================================
+# 8. HOME DASHBOARD
+# ==========================================
+
+if page == "Home Dashboard":
+
+    show_hero(
+        "🌍 FOODWISE AI",
+        "AI-Based Food Waste Prediction and Smart Donation Recommendation System"
+    )
+
+    st.subheader("Welcome to FoodWise AI")
+
+    st.write(
+        "An educational machine learning application that estimates "
+        "food waste and provides rule-based donation suggestions."
+    )
+
+    st.divider()
+
+    c1, c2, c3 = st.columns(3)
+
+    c1.metric("ML Algorithm", "Ridge Regression")
+    c2.metric("Input Features", "20")
+    c3.metric("Model Status", "Online" if model is not None else "Offline")
+
+    st.subheader("Platform Modules")
 
     col1, col2 = st.columns(2)
 
     with col1:
-
-        st.info("""
-        ### 📊 Food Waste Prediction
-
-        Predict estimated food waste using
-        a pretrained Machine Learning regression model.
-        """)
-
-        st.info("""
-        ### 🤝 Smart Donation Recommendation
-
-        Identify potential donation channels based on
-        food type, quantity, expiry and storage details.
-        """)
+        show_card(
+            "🤖 Food Waste Prediction",
+            "Estimate food waste using your trained regression model."
+        )
+        show_card(
+            "📊 Analytics & Insights",
+            "View the latest prediction and input details."
+        )
+        show_card(
+            "🧠 ML Model Information",
+            "Explore Ridge Regression and its model configuration."
+        )
 
     with col2:
+        show_card(
+            "🎁 Smart Donation",
+            "Receive possible donation-channel suggestions using predefined rules."
+        )
+        show_card(
+            "🌱 Waste Reduction Tips",
+            "Explore practical food waste reduction strategies."
+        )
 
-        st.success("""
-        ### 📈 Analytics & Insights
+    if model is None:
+        st.error("Model loading failed: " + str(model_error))
 
-        Visualize the latest prediction and
-        understand food waste estimates.
-        """)
-
-        st.success("""
-        ### 🌱 Waste Reduction Tips
-
-        Explore practical recommendations for
-        sustainable food management.
-        """)
-
-    st.divider()
-
-    st.subheader("About This Project")
-
-    st.write("""
-    This project combines Machine Learning and
-    rule-based recommendation logic to support
-    food waste management and food redistribution.
-
-    The prediction model estimates food waste
-    in kilograms per person per day.
-    """)
-
-    st.warning(
-        "Educational prototype: the original prediction model "
-        "was trained using synthetic data. Results are not "
-        "validated real-world measurements."
-    )
-
-
-# =====================================================
-# FOOD WASTE PREDICTION
-# =====================================================
+# ==========================================
+# 9. FOOD WASTE PREDICTION
+# ==========================================
 
 elif page == "Food Waste Prediction":
 
-    st.title("📊 Food Waste Prediction")
-
-    st.write(
-        "Enter sector and food management information "
-        "to estimate food waste."
+    show_hero(
+        "🤖 FOOD WASTE PREDICTION",
+        "Enter the required information to generate a prediction."
     )
 
-    with st.form("prediction_form"):
+    if model is None:
+        st.error("Model could not be loaded: " + str(model_error))
+        st.stop()
 
-        col1, col2 = st.columns(2)
+    with st.form("food_prediction_form"):
 
-        with col1:
+        st.subheader("Sector Information")
 
-            st.subheader("Sector Information")
+        c1, c2, c3 = st.columns(3)
 
+        with c1:
             sector = st.selectbox(
-                "Select Sector",
-                list(sector_encoding.keys())
+                "Sector",
+                list(SECTOR_MAPPING.keys())
             )
 
-            month = st.slider("Month", 1, 12, 6)
-
-            is_ramadan = st.selectbox(
-                "Ramadan Season",
-                [0, 1],
-                format_func=lambda x: "Yes" if x else "No"
+        with c2:
+            month = st.selectbox(
+                "Month",
+                list(range(1, 13)),
+                index=datetime.now().month - 1
             )
 
-            is_eid = st.selectbox(
-                "Eid Season",
-                [0, 1],
-                format_func=lambda x: "Yes" if x else "No"
-            )
-
+        with c3:
             household_size = st.number_input(
-                "Household Size", 1, 11, 4
+                "Household Size",
+                min_value=1,
+                max_value=100,
+                value=4
             )
 
-            income_tier = st.slider(
-                "Income Tier", 1, 5, 3
+        st.subheader("Seasonal Information")
+
+        c1, c2, c3 = st.columns(3)
+
+        with c1:
+            ramadan = st.selectbox("Ramadan", ["No", "Yes"])
+
+        with c2:
+            eid = st.selectbox("Eid", ["No", "Yes"])
+
+        with c3:
+            income_tier = st.slider("Income Tier", 1, 5, 3)
+
+        st.subheader("Food Management Information")
+
+        c1, c2, c3 = st.columns(3)
+
+        with c1:
+            expat_pct = st.slider("Expat Population (%)", 0, 100, 30)
+
+        with c2:
+            buffet = st.selectbox("Buffet Style", ["No", "Yes"])
+
+        with c3:
+            portion_control = st.slider(
+                "Portion Control", 0.0, 1.0, 0.5
             )
 
-            expat_pct = st.slider(
-                "Expat Percentage", 0.30, 0.75, 0.50
-            )
+        st.subheader("Storage and Quality")
 
-            buffet_style = st.selectbox(
-                "Buffet Style",
-                [0, 1],
-                format_func=lambda x: "Yes" if x else "No"
-            )
+        c1, c2, c3 = st.columns(3)
 
-            portion_control = st.selectbox(
-                "Portion Control",
-                [0, 1],
-                format_func=lambda x: "Yes" if x else "No"
-            )
-
+        with c1:
             cold_chain_quality = st.slider(
-                "Cold Chain Quality", 1, 5, 3
+                "Cold Chain Quality", 0.0, 1.0, 0.7
             )
 
-        with col2:
-
-            st.subheader("Food Management Information")
-
+        with c2:
             food_literacy = st.slider(
-                "Food Literacy", 1, 5, 3
+                "Food Literacy", 0.0, 1.0, 0.6
             )
 
-            temperature_c = st.selectbox(
-                "Temperature (°C)",
-                [22, 28, 35, 40, 44, 46]
+        with c3:
+            temperature_c = st.slider(
+                "Temperature (°C)", 0, 50, 30
             )
 
+        c1, c2, c3 = st.columns(3)
+
+        with c1:
             storage_quality = st.slider(
-                "Storage Quality", 1, 5, 3
+                "Storage Quality", 0.0, 1.0, 0.7
             )
 
+        with c2:
             purchase_planning = st.slider(
-                "Purchase Planning", 1, 5, 3
+                "Purchase Planning", 0.0, 1.0, 0.6
             )
 
+        with c3:
             delivery_spoilage = st.slider(
-                "Delivery Spoilage", 0.0, 1.0, 0.15
+                "Delivery Spoilage", 0.0, 1.0, 0.2
             )
 
+        st.subheader("Additional Factors")
+
+        c1, c2, c3 = st.columns(3)
+
+        with c1:
             menu_diversity = st.slider(
-                "Menu Diversity", 5, 49, 20
+                "Menu Diversity", 0.0, 1.0, 0.5
             )
 
+        with c2:
             overbuying_idx = st.slider(
-                "Overbuying Index", 0.0, 1.0, 0.40
+                "Overbuying Index", 0.0, 1.0, 0.3
             )
 
-            awareness_campaign = st.selectbox(
-                "Awareness Campaign",
-                [0, 1],
-                format_func=lambda x: "Yes" if x else "No"
+        with c3:
+            awareness_campaign = st.slider(
+                "Awareness Campaign", 0.0, 1.0, 0.5
             )
 
-            penalty_regime = st.selectbox(
-                "Penalty Regime",
-                [0, 1],
-                format_func=lambda x: "Yes" if x else "No"
+        c1, c2 = st.columns(2)
+
+        with c1:
+            penalty_regime = st.slider(
+                "Penalty Regime", 0.0, 1.0, 0.5
             )
 
-            composting_avail = st.selectbox(
-                "Composting Available",
-                [0, 1],
-                format_func=lambda x: "Yes" if x else "No"
+        with c2:
+            composting_avail = st.slider(
+                "Composting Availability", 0.0, 1.0, 0.5
             )
+
+        st.divider()
 
         submit = st.form_submit_button(
-            "🔍 Predict Food Waste",
+            "🚀 PREDICT FOOD WASTE",
             use_container_width=True
         )
 
     if submit:
 
         input_data = {
-            "sector_enc": sector_encoding[sector],
+            "sector_enc": SECTOR_MAPPING[sector],
             "month": month,
-            "is_ramadan": is_ramadan,
-            "is_eid": is_eid,
+            "is_ramadan": int(ramadan == "Yes"),
+            "is_eid": int(eid == "Yes"),
             "household_size": household_size,
             "income_tier": income_tier,
             "expat_pct": expat_pct,
-            "buffet_style": buffet_style,
+            "buffet_style": int(buffet == "Yes"),
             "portion_control": portion_control,
             "cold_chain_quality": cold_chain_quality,
             "food_literacy": food_literacy,
@@ -424,539 +472,362 @@ elif page == "Food Waste Prediction":
             "composting_avail": composting_avail
         }
 
-        input_df = pd.DataFrame(
-            [input_data],
-            columns=features
-        )
+        input_df = pd.DataFrame([input_data], columns=FEATURES)
 
         try:
-
             prediction = float(model.predict(input_df)[0])
 
-            st.session_state["last_prediction"] = prediction
-            st.session_state["last_sector"] = sector
+            if not pd.notna(prediction):
+                raise ValueError("The model returned an invalid prediction.")
 
-            st.divider()
+            st.session_state.prediction = prediction
+            st.session_state.prediction_sector = sector
+            st.session_state.prediction_inputs = input_data
 
-            st.subheader("Prediction Results")
+            st.success("Prediction completed successfully!")
 
-            st.metric(
-                "Estimated Food Waste",
-                f"{prediction:.3f} kg/person/day"
+            st.subheader("Prediction Result")
+
+            c1, c2 = st.columns(2)
+
+            c1.metric(
+                "Predicted Food Waste",
+                f"{prediction:.4f} kg/person/day"
             )
 
-            st.write("### Input Summary")
+            c2.metric("Selected Sector", sector)
 
-            st.dataframe(
-                input_df,
-                use_container_width=True
+            st.info(
+                "This is an educational model estimate, not a measurement of actual food waste."
             )
 
-            if prediction > 1.5:
-
-                st.warning(
-                    "The model estimate is relatively high. "
-                    "Review purchasing, storage and portion planning."
-                )
-
-            elif prediction >= 0.8:
-
-                st.info(
-                    "Review food management practices and "
-                    "monitor actual waste records."
-                )
-
-            else:
-
-                st.success(
-                    "The model estimate is below 0.8 kg/person/day. "
-                    "Continue monitoring actual food waste."
-                )
-
-            st.caption(
-                "This is an estimate from a model trained on "
-                "synthetic data, not a verified real-world measurement."
-            )
+            with st.expander("View all 20 input features"):
+                st.dataframe(input_df, use_container_width=True)
 
         except Exception as e:
+            st.error("Prediction error: " + str(e))
 
-            st.error(f"Prediction error: {e}")
-
-
-# =====================================================
-# SMART DONATION RECOMMENDATION
-# =====================================================
+# ==========================================
+# 10. SMART DONATION
+# ==========================================
 
 elif page == "Smart Donation":
 
-    st.title("🤝 Smart Food Donation Center")
-
-    st.write(
-        "Find a suitable potential donation channel "
-        "for surplus food."
+    show_hero(
+        "🎁 SMART DONATION",
+        "Rule-based food donation suggestions"
     )
 
-    st.divider()
-
-    st.subheader("📦 Surplus Food Details")
+    st.write(
+        "Enter surplus food details to receive possible donation-channel suggestions."
+    )
 
     with st.form("donation_form"):
 
-        col1, col2 = st.columns(2)
+        food_type = st.selectbox(
+            "Food Type",
+            [
+                "Cooked Food",
+                "Vegetables",
+                "Fruits",
+                "Bakery Items",
+                "Packaged Food",
+                "Dairy Products"
+            ]
+        )
 
-        with col1:
+        quantity = st.number_input(
+            "Quantity (kg)",
+            min_value=0.1,
+            value=10.0
+        )
 
-            food_type = st.selectbox(
-                "Food Category",
-                [
-                    "Fresh Produce",
-                    "Packaged Dry Food",
-                    "Cooked Meals",
-                    "Dairy Products",
-                    "Bakery Products"
-                ]
-            )
+        expiry_hours = st.number_input(
+            "Estimated Hours Until Expiry",
+            min_value=0.0,
+            value=12.0
+        )
 
-            quantity = st.number_input(
-                "Surplus Quantity (kg)",
-                min_value=0.0,
-                max_value=10000.0,
-                value=10.0
-            )
+        location = st.text_input("Location")
 
-            expiry_hours = st.number_input(
-                "Hours Remaining Until Expiry",
-                min_value=0.0,
-                max_value=720.0,
-                value=24.0
-            )
-
-        with col2:
-
-            location = st.text_input(
-                "Location / Area",
-                placeholder="Example: Chennai"
-            )
-
-            storage_safe = st.selectbox(
-                "Storage Condition",
-                [
-                    "Select condition",
-                    "Properly stored",
-                    "Not sure",
-                    "Improperly stored"
-                ]
-            )
-
-            food_acceptable = st.checkbox(
-                "Food is unexpired and has no visible signs of spoilage"
-            )
+        storage_safe = st.checkbox(
+            "Food is stored safely and is suitable for food safety assessment"
+        )
 
         submit_donation = st.form_submit_button(
-            "✨ Generate Donation Recommendation",
+            "GET DONATION SUGGESTIONS",
             use_container_width=True
         )
 
     if submit_donation:
 
-        st.divider()
-
-        st.subheader("🎯 Recommendation Results")
-
-        if quantity <= 0:
-
-            st.error("Enter a surplus quantity greater than zero.")
+        if not storage_safe:
+            st.warning(
+                "Food safety must be assessed before donation. Do not donate food unless it is confirmed safe."
+            )
 
         elif expiry_hours <= 0:
-
-            st.error("The entered expiry time has passed.")
-
-        elif storage_safe != "Properly stored" or not food_acceptable:
-
             st.error(
-                "Donation is not recommended based on the information "
-                "provided. Do not distribute potentially unsafe food."
+                "The entered expiry time has passed. Do not recommend this food for donation."
             )
 
         else:
 
-            # Food type recommendation
-
-            if food_type == "Fresh Produce":
-
-                channel = (
-                    "Community Kitchens / Food Redistribution NGOs"
-                )
-
-                reason = (
-                    "Potentially suitable for organizations that "
-                    "accept fresh produce."
-                )
-
-            elif food_type == "Packaged Dry Food":
-
-                channel = (
-                    "Registered Food Banks / Community NGOs"
-                )
-
-                reason = (
-                    "Potentially suitable for accepted, "
-                    "unexpired packaged food."
-                )
-
-            elif food_type == "Cooked Meals":
-
-                channel = (
-                    "Authorized Community Kitchens"
-                )
-
-                reason = (
-                    "Requires prompt recipient acceptance "
-                    "and safe handling."
-                )
-
-            elif food_type == "Dairy Products":
-
-                channel = (
-                    "Registered Food Banks with Suitable Cold Storage"
-                )
-
-                reason = (
-                    "Recipient must be able to maintain "
-                    "required storage conditions."
-                )
-
-            else:
-
-                channel = (
-                    "Community Kitchens / Registered Food Banks"
-                )
-
-                reason = (
-                    "Check packaging, freshness and "
-                    "recipient acceptance."
-                )
-
-            # Quantity recommendation
-
             if quantity < 5:
-
-                scale = "Small Surplus"
-
-                action = (
-                    "Contact a nearby eligible organization."
-                )
-
-            elif quantity <= 20:
-
-                scale = "Medium Surplus"
-
-                action = (
-                    "Coordinate with a registered food bank "
-                    "or community kitchen."
-                )
-
+                surplus = "Small Surplus"
+            elif quantity < 25:
+                surplus = "Medium Surplus"
             else:
+                surplus = "Large Surplus"
 
-                scale = "Large Surplus"
-
-                action = (
-                    "Coordinate collection with suitable "
-                    "donation organizations."
-                )
-
-            # Expiry priority
-
-            if expiry_hours <= 6:
-
-                urgency = "Urgent Coordination"
-
-            elif expiry_hours <= 24:
-
-                urgency = "High Priority"
-
+            if expiry_hours <= 4:
+                priority = "High Priority"
+            elif expiry_hours <= 12:
+                priority = "Medium Priority"
             else:
+                priority = "Normal Priority"
 
-                urgency = "Planned Coordination"
+            channels = {
+                "Cooked Food": "Registered food redistribution organizations",
+                "Vegetables": "Community food banks",
+                "Fruits": "Community food distribution programs",
+                "Bakery Items": "Registered charitable organizations",
+                "Packaged Food": "Food banks and donation organizations",
+                "Dairy Products": "Approved organizations with suitable cold storage"
+            }
 
-            st.success(
-                "Potential donation channel identified!"
+            st.success("Suggestions generated!")
+
+            c1, c2, c3 = st.columns(3)
+
+            c1.metric("Quantity", f"{quantity:.1f} kg")
+            c2.metric("Surplus", surplus)
+            c3.metric("Priority", priority)
+
+            show_card(
+                "Suggested Donation Channel",
+                channels[food_type]
             )
 
-            a, b, c = st.columns(3)
+            st.write("Location:", location if location else "Not entered")
 
-            a.metric(
-                "Surplus Quantity",
-                f"{quantity:.1f} kg"
+            st.info(
+                "These are rule-based suggestions. The application does not "
+                "verify food safety or locate actual available donation partners."
             )
 
-            b.metric(
-                "Surplus Level",
-                scale
-            )
-
-            c.metric(
-                "Expiry Remaining",
-                f"{expiry_hours:g} hours"
-            )
-
-            st.divider()
-
-            st.subheader("🏢 Suggested Donation Channel")
-
-            st.info(channel)
-
-            st.subheader("📍 Donation Information")
-
-            st.write("**Food Category:**", food_type)
-
-            st.write(
-                "**Location:**",
-                location if location else "Not provided"
-            )
-
-            st.write("**Reason:**", reason)
-
-            st.write("**Suggested Action:**", action)
-
-            st.write("**Priority:**", urgency)
-
-            st.divider()
-
-            st.subheader("🌱 Potential Social Benefit")
-
-            st.success(
-                "This surplus may help eligible community "
-                "organizations if the food meets their "
-                "safety and acceptance requirements."
-            )
-
-            st.caption(
-                "This is a rule-based recommendation, not an ML "
-                "prediction or verified partner match. Confirm "
-                "local food safety rules, storage, transport and "
-                "recipient acceptance before donation."
-            )
-
-
-# =====================================================
-# ANALYTICS AND INSIGHTS
-# =====================================================
+# ==========================================
+# 11. ANALYTICS
+# ==========================================
 
 elif page == "Analytics & Insights":
 
-    st.title("📈 Analytics & Insights")
-
-    st.write(
-        "Understand the latest food waste prediction "
-        "and model information."
+    show_hero(
+        "📊 ANALYTICS & INSIGHTS",
+        "Analysis of your latest model prediction"
     )
 
-    if "last_prediction" not in st.session_state:
+    if st.session_state.prediction is None:
 
         st.info(
-            "No prediction available. Visit Food Waste Prediction "
-            "to generate your first result."
+            "Generate a prediction first using the Food Waste Prediction page."
         )
 
     else:
 
-        prediction = st.session_state["last_prediction"]
+        prediction = st.session_state.prediction
+        sector = st.session_state.prediction_sector
 
-        sector = st.session_state["last_sector"]
-
-        st.subheader("Prediction Overview")
-
-        c1, c2, c3 = st.columns(3)
+        c1, c2 = st.columns(2)
 
         c1.metric(
-            "Predicted Waste",
-            f"{prediction:.3f} kg/person/day"
+            "Predicted Food Waste",
+            f"{prediction:.4f} kg/person/day"
         )
 
-        c2.metric(
-            "Selected Sector",
-            sector
-        )
+        c2.metric("Selected Sector", sector)
 
-        c3.metric(
-            "Prediction Method",
-            "Regression"
-        )
+        st.subheader("Prediction Chart")
 
-        st.divider()
+        chart_data = pd.DataFrame({
+            "Prediction": [prediction]
+        })
 
-        st.subheader("Food Waste Estimate")
+        st.bar_chart(chart_data)
 
-        chart_data = pd.DataFrame(
-            {
-                "Metric": ["Predicted Food Waste"],
-                "Waste": [prediction]
-            }
-        ).set_index("Metric")
+        st.subheader("Input Feature Analysis")
 
-        st.bar_chart(
-            chart_data,
-            color="#13866a"
-        )
+        inputs = st.session_state.prediction_inputs
 
-        st.subheader("Prediction Interpretation")
-
-        if prediction > 1.5:
-
-            st.warning(
-                "The model estimate is above 1.5 kg/person/day. "
-                "Review purchasing, storage and portion planning."
+        if inputs is not None:
+            st.dataframe(
+                pd.DataFrame(
+                    list(inputs.items()),
+                    columns=["Feature", "Value"]
+                ),
+                use_container_width=True,
+                hide_index=True
             )
-
-        elif prediction >= 0.8:
-
-            st.info(
-                "The model estimate is between 0.8 and 1.5 "
-                "kg/person/day. Review food management practices."
-            )
-
-        else:
-
-            st.success(
-                "The model estimate is below 0.8 kg/person/day. "
-                "Continue monitoring actual food waste."
-            )
-
-        st.divider()
-
-        st.subheader("Model Information")
-
-        info1, info2 = st.columns(2)
-
-        with info1:
-
-            st.markdown("""
-            **Model Type**
-
-            Machine Learning Regression
-
-            **Input Features**
-
-            20 features
-
-            **Prediction Output**
-
-            Estimated kg/person/day
-            """)
-
-        with info2:
-
-            st.markdown("""
-            **Model Framework**
-
-            Scikit-learn
-
-            **Model Format**
-
-            Pickle / Joblib
-
-            **Training Dataset**
-
-            Synthetic dataset
-            """)
 
         st.caption(
-            "This page displays the latest prediction only. "
-            "It does not represent historical analytics or "
-            "verified real-world trends."
+            "This represents the latest prediction only, not historical trends."
         )
 
-
-# =====================================================
-# FOOD WASTE REDUCTION TIPS
-# =====================================================
+# ==========================================
+# 12. WASTE REDUCTION TIPS
+# ==========================================
 
 elif page == "Waste Reduction Tips":
 
-    st.title("🌱 Food Waste Reduction Tips")
-
-    st.write(
-        "Explore sector-specific suggestions for "
-        "reducing avoidable food waste."
+    show_hero(
+        "🌱 WASTE REDUCTION TIPS",
+        "Practical food management strategies"
     )
 
     tips = {
-
         "Household": [
-            "Prepare a weekly shopping list.",
-            "Store food according to product requirements.",
-            "Use suitable older items before newer purchases.",
-            "Plan portions before cooking."
+            "Prepare a shopping list.",
+            "Plan meals before purchasing.",
+            "Store food correctly.",
+            "Check expiry dates.",
+            "Avoid unnecessary purchases."
         ],
-
         "Restaurant": [
-            "Monitor customer plate waste.",
-            "Review portion sizes.",
-            "Improve demand forecasting.",
-            "Coordinate safe surplus donation."
+            "Monitor kitchen waste.",
+            "Plan portion sizes.",
+            "Improve inventory management.",
+            "Estimate customer demand.",
+            "Monitor surplus food."
         ],
-
         "Hotel": [
             "Monitor buffet consumption.",
-            "Prepare food in suitable batches.",
-            "Track unused ingredients.",
-            "Coordinate with approved donation partners."
+            "Prepare food according to demand.",
+            "Improve cold storage.",
+            "Measure food waste.",
+            "Coordinate approved donation."
         ],
-
         "Supermarket": [
-            "Monitor stock expiry dates.",
-            "Improve inventory rotation.",
-            "Plan markdowns where legally appropriate.",
-            "Coordinate with registered food banks."
+            "Use stock rotation.",
+            "Monitor product dates.",
+            "Improve inventory planning.",
+            "Maintain suitable storage.",
+            "Coordinate food redistribution."
         ],
-
-        "Catering": [
-            "Estimate event attendance carefully.",
-            "Plan serving quantities.",
-            "Track leftover food.",
-            "Coordinate with authorized recipients."
+        "Hospital": [
+            "Plan meals according to dietary requirements.",
+            "Monitor kitchen preparation.",
+            "Maintain food safety.",
+            "Measure surplus food.",
+            "Improve inventory control."
         ],
-
         "School": [
             "Plan meals based on attendance.",
-            "Monitor plate waste.",
-            "Teach food awareness.",
-            "Review meal portion planning."
+            "Encourage responsible portions.",
+            "Educate students.",
+            "Monitor cafeteria surplus.",
+            "Improve meal planning."
         ],
-
-        "Hospital": [
-            "Plan meals according to approved dietary requirements.",
-            "Monitor untouched meals.",
-            "Follow strict food safety procedures.",
-            "Use approved waste reduction processes."
+        "Catering": [
+            "Estimate guest numbers.",
+            "Plan food quantities.",
+            "Monitor leftovers.",
+            "Improve food storage.",
+            "Coordinate approved donation."
         ]
     }
 
-    selected_sector = st.selectbox(
+    sector_choice = st.selectbox(
         "Select Sector",
         list(tips.keys())
     )
 
-    st.subheader(
-        f"Suggestions for {selected_sector}"
+    st.subheader("Recommended Actions")
+
+    for index, tip in enumerate(tips[sector_choice], start=1):
+        show_card(f"Action {index}", tip)
+
+# ==========================================
+# 13. ML MODEL INFORMATION
+# ==========================================
+
+elif page == "ML Model Information":
+
+    show_hero(
+        "🧠 ML MODEL INFORMATION",
+        "Technical information about your deployed model"
     )
 
-    for index, tip in enumerate(
-        tips[selected_sector],
-        start=1
-    ):
+    if model is None:
+        st.error("Model is unavailable: " + str(model_error))
+        st.stop()
 
-        st.write(f"**{index}.** {tip}")
+    c1, c2, c3 = st.columns(3)
 
+    c1.metric("Algorithm", "Ridge Regression")
+    c2.metric("Regularization", "L2")
+    c3.metric("Alpha", str(model.get_params().get("alpha", "N/A")))
 
-# =====================================================
-# FOOTER
-# =====================================================
+    st.subheader("Model Details")
+
+    show_card(
+        "Ridge Regression",
+        "A supervised regression algorithm that uses L2 regularization "
+        "to penalize large model coefficients."
+    )
+
+    st.write("**Model file:** model_food_waste.pkl")
+    st.write("**Target:** waste_kg_person_day")
+    st.write("**Input feature count:** 20")
+
+    st.subheader("Feature Names")
+
+    if hasattr(model, "feature_names_in_"):
+        feature_names = list(model.feature_names_in_)
+    else:
+        feature_names = FEATURES
+
+    st.dataframe(
+        pd.DataFrame({
+            "No.": range(1, len(feature_names) + 1),
+            "Feature": feature_names
+        }),
+        use_container_width=True,
+        hide_index=True
+    )
+
+    st.subheader("Model Parameters")
+
+    parameters = model.get_params()
+
+    st.dataframe(
+        pd.DataFrame(
+            list(parameters.items()),
+            columns=["Parameter", "Value"]
+        ),
+        use_container_width=True,
+        hide_index=True
+    )
+
+    st.warning(
+        "The supplied model was trained using synthetic data. "
+        "Its predictions are educational estimates and have not been "
+        "validated for real-world food waste decisions."
+    )
+
+# ==========================================
+# 14. FOOTER
+# ==========================================
 
 st.divider()
 
-st.caption(
-    "AI-Based Food Waste Prediction and Smart Donation "
-    "Recommendation System | Python | Scikit-learn | Streamlit"
+st.markdown(
+    """
+    <div style="text-align:center; color:#94A3B8; padding:15px;">
+        <h3>🌍 FOODWISE AI</h3>
+        AI-Based Food Waste Prediction and Smart Donation Recommendation System
+        <br><br>
+        Python | Pandas | Scikit-learn | Joblib | Streamlit
+    </div>
+    """,
+    unsafe_allow_html=True
 )
